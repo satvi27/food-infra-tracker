@@ -6,7 +6,7 @@ from sklearn.cluster import KMeans
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 import seaborn as sns
 
 st.set_page_config(page_title="Food Infrastructure Tracker", layout="centered")
@@ -26,28 +26,26 @@ if uploaded_file:
 
     st.write("### Preview of Uploaded Data", df.head())
 
-    # ---------- Clean numeric columns ----------
-    for col in df.columns:
-        # Remove line breaks, commas, spaces and convert to numeric
-        df[col] = pd.to_numeric(df[col].astype(str).str.replace("\n", "").str.replace(",", "").str.strip(), errors='coerce')
-
-    # Keep only numeric columns
+    # Keep only numeric columns for analysis
     numeric_df = df.select_dtypes(include=[np.number])
-
+    
     if numeric_df.shape[1] < 2:
         st.warning("Dataset must have at least 2 numeric columns for analysis.")
     else:
+        # Drop rows with missing values in numeric columns
+        numeric_df = numeric_df.dropna()
         X = numeric_df.iloc[:, :-1]
         y = numeric_df.iloc[:, -1]
 
         # ---------- 1) 3D Clustering ----------
         if X.shape[1] >= 3:
             kmeans = KMeans(n_clusters=3, random_state=42, n_init=10)
-            df["Cluster"] = kmeans.fit_predict(X)
+            clusters = kmeans.fit_predict(X)
+            df.loc[X.index, "Cluster"] = clusters
 
             fig1 = plt.figure(figsize=(6, 4))
             ax = fig1.add_subplot(111, projection="3d")
-            ax.scatter(X.iloc[:, 0], X.iloc[:, 1], X.iloc[:, 2], c=df["Cluster"], cmap="viridis")
+            ax.scatter(X.iloc[:, 0], X.iloc[:, 1], X.iloc[:, 2], c=clusters, cmap="viridis")
             ax.set_xlabel(X.columns[0])
             ax.set_ylabel(X.columns[1])
             ax.set_zlabel(X.columns[2])
@@ -65,12 +63,15 @@ if uploaded_file:
 
         X_train, X_test, y_train, y_test = train_test_split(X, y_bins, test_size=0.3, random_state=42)
 
+        # Decision Tree
         tree = DecisionTreeClassifier(random_state=42).fit(X_train, y_train)
         y_pred_tree = tree.predict(X_test)
         acc = accuracy_score(y_test, y_pred_tree)
         st.write("### Decision Tree Accuracy:", round(acc, 2))
 
-        logistic = LogisticRegression(max_iter=500).fit(X_train, y_train.cat.codes)
+        # Logistic Regression
+        logistic = LogisticRegression(max_iter=500)
+        logistic.fit(X_train, y_train.cat.codes)
         preds = logistic.predict(X_test)
         cm = confusion_matrix(y_test.cat.codes, preds)
 
