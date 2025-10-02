@@ -6,7 +6,7 @@ from sklearn.cluster import KMeans
 from sklearn.model_selection import train_test_split
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, confusion_matrix
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 import seaborn as sns
 
 st.set_page_config(page_title="Food Infrastructure Tracker", layout="centered")
@@ -26,13 +26,18 @@ if uploaded_file:
 
     st.write("### Preview of Uploaded Data", df.head())
 
-    # ----------------- Data Preparation -----------------
-    numeric_df = df.select_dtypes(include=[np.number])   # keep only numeric columns
+    # ----------------- Clean and Prepare Numeric Data -----------------
+    # Remove non-numeric columns for clustering
+    for col in df.columns:
+        # Remove newlines and spaces, try converting to numeric
+        df[col] = pd.to_numeric(df[col].astype(str).str.replace("\n", "").str.strip(), errors="ignore")
+    
+    numeric_df = df.select_dtypes(include=[np.number]).copy()
 
     if numeric_df.shape[1] < 2:
-        st.error("Dataset must have at least 2 numeric columns.")
+        st.error("Dataset must have at least 2 numeric columns for analysis.")
     else:
-        # Use all numeric columns except last as features
+        # Assume last numeric column is target
         X = numeric_df.iloc[:, :-1]
         y = numeric_df.iloc[:, -1]
 
@@ -43,8 +48,7 @@ if uploaded_file:
 
             fig1 = plt.figure(figsize=(6, 4))
             ax = fig1.add_subplot(111, projection="3d")
-            ax.scatter(X.iloc[:, 0], X.iloc[:, 1], X.iloc[:, 2],
-                       c=df["Cluster"], cmap="viridis")
+            ax.scatter(X.iloc[:, 0], X.iloc[:, 1], X.iloc[:, 2], c=df["Cluster"], cmap="viridis")
             ax.set_xlabel(X.columns[0])
             ax.set_ylabel(X.columns[1])
             ax.set_zlabel(X.columns[2])
@@ -55,34 +59,24 @@ if uploaded_file:
 
         # ---------- 2) Decision Tree + Confusion Matrix ----------
         labels = ["Low", "Medium", "High"]
-
         try:
-            y_bins = pd.qcut(y, q=len(labels), labels=labels, duplicates="drop")
+            y_bins = pd.qcut(y, q=len(labels), labels=labels)
         except Exception:
             y_bins = pd.cut(y, bins=len(labels), labels=labels)
 
-        # Convert categories to codes for ML
-        y_codes = y_bins.astype("category").cat.codes
+        X_train, X_test, y_train, y_test = train_test_split(X, y_bins, test_size=0.3, random_state=42)
 
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y_codes, test_size=0.3, random_state=42
-        )
-
-        tree = DecisionTreeClassifier(random_state=42)
-        tree.fit(X_train, y_train)
+        tree = DecisionTreeClassifier(random_state=42).fit(X_train, y_train)
         y_pred_tree = tree.predict(X_test)
         acc = accuracy_score(y_test, y_pred_tree)
         st.write("### Decision Tree Accuracy:", round(acc, 2))
 
-        logistic = LogisticRegression(max_iter=500)
-        logistic.fit(X_train, y_train)
+        logistic = LogisticRegression(max_iter=500).fit(X_train, y_train.cat.codes)
         preds = logistic.predict(X_test)
-
-        cm = confusion_matrix(y_test, preds)
+        cm = confusion_matrix(y_test.cat.codes, preds)
 
         fig2, ax2 = plt.subplots()
-        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
-                    xticklabels=labels, yticklabels=labels, ax=ax2)
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=labels, yticklabels=labels, ax=ax2)
         ax2.set_title("Confusion Matrix")
         st.pyplot(fig2)
 
