@@ -11,7 +11,7 @@ import seaborn as sns
 
 st.set_page_config(page_title="Food Infrastructure Tracker", layout="centered")
 
-st.title(" Food Infrastructure Tracker")
+st.title("Food Infrastructure Tracker")
 st.write("AI Project with Market Access & Agricultural Yield Analysis")
 
 # Upload file option
@@ -27,15 +27,14 @@ if uploaded_file:
     st.write("### Preview of Uploaded Data", df.head())
 
     # ----------------- Data Preparation -----------------
-    # Keep only numeric columns for ML
-    numeric_df = df.select_dtypes(include=[np.number])
+    numeric_df = df.select_dtypes(include=[np.number])   # keep only numeric columns
 
     if numeric_df.shape[1] < 2:
-        st.error(" Need at least 2 numeric columns in dataset.")
+        st.error("Dataset must have at least 2 numeric columns.")
     else:
-        # Features = all except last numeric column
+        # Use all numeric columns except last as features
         X = numeric_df.iloc[:, :-1]
-        y = numeric_df.iloc[:, -1]   # last numeric column as target
+        y = numeric_df.iloc[:, -1]
 
         # ---------- 1) 3D Clustering ----------
         if X.shape[1] >= 3:
@@ -52,30 +51,34 @@ if uploaded_file:
             ax.set_title("3D Clustering Result")
             st.pyplot(fig1)
         else:
-            st.warning("ℹ️ Need at least 3 numeric columns for 3D clustering.")
+            st.warning("Need at least 3 numeric columns for 3D clustering.")
 
         # ---------- 2) Decision Tree + Confusion Matrix ----------
         labels = ["Low", "Medium", "High"]
+
         try:
             y_bins = pd.qcut(y, q=len(labels), labels=labels, duplicates="drop")
         except Exception:
             y_bins = pd.cut(y, bins=len(labels), labels=labels)
 
+        # Convert categories to codes for ML
+        y_codes = y_bins.astype("category").cat.codes
+
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y_bins, test_size=0.3, random_state=42
+            X, y_codes, test_size=0.3, random_state=42
         )
 
         tree = DecisionTreeClassifier(random_state=42)
         tree.fit(X_train, y_train)
         y_pred_tree = tree.predict(X_test)
         acc = accuracy_score(y_test, y_pred_tree)
-        st.write("###  Decision Tree Accuracy:", round(acc, 2))
+        st.write("### Decision Tree Accuracy:", round(acc, 2))
 
         logistic = LogisticRegression(max_iter=500)
-        logistic.fit(X_train, y_train.codes)  # convert categories to numbers
+        logistic.fit(X_train, y_train)
         preds = logistic.predict(X_test)
 
-        cm = confusion_matrix(y_test.codes, preds)
+        cm = confusion_matrix(y_test, preds)
 
         fig2, ax2 = plt.subplots()
         sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
@@ -90,4 +93,4 @@ if uploaded_file:
         st.pyplot(fig3)
 
 else:
-    st.info(" Please upload a file to continue.")
+    st.info("Please upload a file to continue.")
